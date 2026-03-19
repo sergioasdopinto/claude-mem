@@ -170,8 +170,9 @@ finish`;
 
         // Should complete quickly despite many tags
         expect(duration).toBeLessThan(1000);
-        // Should not contain any private content
-        expect(result).not.toContain('<private>');
+        // SECURITY: When tag count exceeds limit, content is returned unmodified
+        // to prevent ReDoS attacks (regex processing is blocked)
+        expect(result).toBe(content);
         // Should warn about exceeding tag limit
         expect(loggerSpies[2]).toHaveBeenCalled(); // warn spy
       });

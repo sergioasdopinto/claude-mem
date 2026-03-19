@@ -1,9 +1,31 @@
 import path from "path";
-import { readFileSync } from "fs";
+import { readFileSync, existsSync } from "fs";
+import { homedir } from "os";
 import { logger } from "../utils/logger.js";
 import { HOOK_TIMEOUTS, getTimeout } from "./hook-constants.js";
 import { SettingsDefaultsManager } from "./SettingsDefaultsManager.js";
 import { MARKETPLACE_ROOT } from "./paths.js";
+
+// Cache for API token
+let cachedApiToken: string | null = null;
+
+/**
+ * Read the API authentication token from ~/.claude-mem/.api-token
+ * Used by hooks and clients to authenticate with the worker HTTP API.
+ */
+function getApiToken(): string {
+  if (cachedApiToken !== null) return cachedApiToken;
+  const tokenFile = path.join(homedir(), '.claude-mem', '.api-token');
+  try {
+    if (existsSync(tokenFile)) {
+      cachedApiToken = readFileSync(tokenFile, 'utf-8').trim();
+      return cachedApiToken;
+    }
+  } catch {
+    // Token file not yet created — worker hasn't started
+  }
+  return '';
+}
 
 // Named constants for health checks
 // Allow env var override for users on slow systems (e.g., CLAUDE_MEM_HEALTH_TIMEOUT_MS=10000)
@@ -88,8 +110,12 @@ export function clearPortCache(): void {
 
 /**
  * Build a full URL for a given API path.
+ * SECURITY: Validates apiPath starts with '/' and contains no path traversal.
  */
 export function buildWorkerUrl(apiPath: string): string {
+  if (!apiPath.startsWith('/') || apiPath.includes('..')) {
+    throw new Error(`Invalid API path: ${apiPath}`);
+  }
   return `http://${getWorkerHost()}:${getWorkerPort()}${apiPath}`;
 }
 
@@ -112,9 +138,13 @@ export function workerHttpRequest(
 
   const url = buildWorkerUrl(apiPath);
   const init: RequestInit = { method };
+  // Include API token for authentication
+  const token = getApiToken();
+  const headers: Record<string, string> = token ? { 'X-API-Token': token } : {};
   if (options.headers) {
-    init.headers = options.headers;
+    Object.assign(headers, options.headers);
   }
+  init.headers = headers;
   if (options.body) {
     init.body = options.body;
   }

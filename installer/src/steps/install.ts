@@ -100,8 +100,11 @@ export async function runInstallation(selectedIDEs: IDE[]): Promise<void> {
       title: 'Cloning claude-mem repository',
       task: async (message) => {
         message('Downloading latest release...');
+        // SECURITY: Pin to a specific release tag to prevent supply-chain attacks
+        // Update INSTALL_VERSION when releasing new versions
+        const INSTALL_VERSION = 'v10.6.1';
         execSync(
-          `git clone --depth 1 https://github.com/thedotmack/claude-mem.git "${tempDir}"`,
+          `git clone --depth 1 --branch ${INSTALL_VERSION} https://github.com/thedotmack/claude-mem.git "${tempDir}"`,
           { stdio: 'pipe' },
         );
         return `Repository cloned ${pc.green('OK')}`;
@@ -111,7 +114,8 @@ export async function runInstallation(selectedIDEs: IDE[]): Promise<void> {
       title: 'Installing dependencies',
       task: async (message) => {
         message('Running npm install...');
-        execSync('npm install', { cwd: tempDir, stdio: 'pipe' });
+        // SECURITY: Use --ignore-scripts to prevent running untrusted postinstall hooks
+        execSync('npm install --ignore-scripts', { cwd: tempDir, stdio: 'pipe' });
         return `Dependencies installed ${pc.green('OK')}`;
       },
     },

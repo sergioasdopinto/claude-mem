@@ -11,7 +11,7 @@
 import path from 'path';
 import { homedir } from 'os';
 import { existsSync, writeFileSync, readFileSync, unlinkSync, mkdirSync, rmSync, statSync, utimesSync } from 'fs';
-import { exec, execSync, spawn } from 'child_process';
+import { exec, execSync, spawn, spawnSync } from 'child_process';
 import { promisify } from 'util';
 import { logger } from '../../utils/logger.js';
 import { HOOK_TIMEOUTS } from '../../shared/hook-constants.js';
@@ -196,8 +196,14 @@ export async function getChildProcesses(parentPid: number): Promise<number[]> {
   try {
     // Use WQL -Filter to avoid $_ pipeline syntax that breaks in Git Bash (#1062, #1024).
     // Get-CimInstance with server-side filtering is also more efficient than piping through Where-Object.
-    const cmd = `powershell -NoProfile -NonInteractive -Command "Get-CimInstance Win32_Process -Filter 'ParentProcessId=${parentPid}' | Select-Object -ExpandProperty ProcessId"`;
-    const { stdout } = await execAsync(cmd, { timeout: HOOK_TIMEOUTS.POWERSHELL_COMMAND, windowsHide: true });
+    // SECURITY: Use spawnSync with argument array to prevent command injection
+    const psScript = `Get-CimInstance Win32_Process -Filter 'ParentProcessId=${parentPid}' | Select-Object -ExpandProperty ProcessId`;
+    const spawnResult = spawnSync('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', psScript], {
+      timeout: HOOK_TIMEOUTS.POWERSHELL_COMMAND,
+      windowsHide: true,
+      encoding: 'utf-8'
+    });
+    const stdout = spawnResult.stdout || '';
     return stdout
       .split('\n')
       .map(line => line.trim())
@@ -324,8 +330,18 @@ export async function cleanupOrphanedProcesses(): Promise<void> {
         .map(p => `CommandLine LIKE '%${p}%'`)
         .join(' OR ');
 
-      const cmd = `powershell -NoProfile -NonInteractive -Command "Get-CimInstance Win32_Process -Filter '(${wqlPatternConditions}) AND ProcessId != ${currentPid}' | Select-Object ProcessId, CreationDate | ConvertTo-Json"`;
-      const { stdout } = await execAsync(cmd, { timeout: HOOK_TIMEOUTS.POWERSHELL_COMMAND, windowsHide: true });
+      // SECURITY: Validate currentPid before interpolation and use spawnSync with argument array
+      if (!Number.isInteger(currentPid) || currentPid <= 0) {
+        logger.warn('SYSTEM', 'Invalid current PID for orphan cleanup', { currentPid });
+        return;
+      }
+      const psScript = `Get-CimInstance Win32_Process -Filter '(${wqlPatternConditions}) AND ProcessId != ${currentPid}' | Select-Object ProcessId, CreationDate | ConvertTo-Json`;
+      const spawnResult = spawnSync('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', psScript], {
+        timeout: HOOK_TIMEOUTS.POWERSHELL_COMMAND,
+        windowsHide: true,
+        encoding: 'utf-8'
+      });
+      const stdout = spawnResult.stdout || '';
 
       if (!stdout.trim() || stdout.trim() === 'null') {
         logger.debug('SYSTEM', 'No orphaned claude-mem processes found (Windows)');
@@ -461,8 +477,18 @@ export async function aggressiveStartupCleanup(): Promise<void> {
         .map(p => `CommandLine LIKE '%${p}%'`)
         .join(' OR ');
 
-      const cmd = `powershell -NoProfile -NonInteractive -Command "Get-CimInstance Win32_Process -Filter '(${wqlPatternConditions}) AND ProcessId != ${currentPid}' | Select-Object ProcessId, CommandLine, CreationDate | ConvertTo-Json"`;
-      const { stdout } = await execAsync(cmd, { timeout: HOOK_TIMEOUTS.POWERSHELL_COMMAND, windowsHide: true });
+      // SECURITY: Validate currentPid before interpolation and use spawnSync with argument array
+      if (!Number.isInteger(currentPid) || currentPid <= 0) {
+        logger.warn('SYSTEM', 'Invalid current PID for aggressive cleanup', { currentPid });
+        return;
+      }
+      const psScript = `Get-CimInstance Win32_Process -Filter '(${wqlPatternConditions}) AND ProcessId != ${currentPid}' | Select-Object ProcessId, CommandLine, CreationDate | ConvertTo-Json`;
+      const spawnResult = spawnSync('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', psScript], {
+        timeout: HOOK_TIMEOUTS.POWERSHELL_COMMAND,
+        windowsHide: true,
+        encoding: 'utf-8'
+      });
+      const stdout = spawnResult.stdout || '';
 
       if (!stdout.trim() || stdout.trim() === 'null') {
         logger.debug('SYSTEM', 'No orphaned claude-mem processes found (Windows)');
@@ -651,7 +677,7 @@ export function spawnDaemon(
     const psCommand = `Start-Process -FilePath '${escapedRuntimePath}' -ArgumentList '${escapedScriptPath}','--daemon' -WindowStyle Hidden`;
 
     try {
-      execSync(`powershell -NoProfile -Command "${psCommand}"`, {
+      spawnSync('powershell.exe', ['-NoProfile', '-Command', psCommand], {
         stdio: 'ignore',
         windowsHide: true,
         env

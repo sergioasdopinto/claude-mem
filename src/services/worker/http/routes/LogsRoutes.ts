@@ -6,7 +6,8 @@
 
 import express, { Request, Response } from 'express';
 import { openSync, fstatSync, readSync, closeSync, existsSync, writeFileSync } from 'fs';
-import { join } from 'path';
+import { join, resolve } from 'path';
+import { homedir } from 'os';
 import { logger } from '../../../../utils/logger.js';
 import { SettingsDefaultsManager } from '../../../../shared/SettingsDefaultsManager.js';
 import { BaseRouteHandler } from '../BaseRouteHandler.js';
@@ -89,7 +90,18 @@ export class LogsRoutes extends BaseRouteHandler {
     const dataDir = SettingsDefaultsManager.get('CLAUDE_MEM_DATA_DIR');
     const logsDir = join(dataDir, 'logs');
     const date = new Date().toISOString().split('T')[0];
-    return join(logsDir, `claude-mem-${date}.log`);
+    const logFilePath = join(logsDir, `claude-mem-${date}.log`);
+
+    // SECURITY: Validate resolved path stays within user's home directory
+    const resolvedPath = resolve(logFilePath);
+    const home = homedir();
+    if (!resolvedPath.startsWith(home + '/') && !resolvedPath.startsWith(home + '\\')) {
+      logger.error('SYSTEM', 'Log file path escapes home directory', { resolvedPath, home });
+      // Fall back to safe default path
+      return join(home, '.claude-mem', 'logs', `claude-mem-${date}.log`);
+    }
+
+    return logFilePath;
   }
 
   private getLogsDir(): string {

@@ -268,7 +268,8 @@ export class SettingsRoutes extends BaseRouteHandler {
     if (settings.CLAUDE_MEM_WORKER_HOST) {
       const host = settings.CLAUDE_MEM_WORKER_HOST;
       // Allow localhost variants and valid IP patterns
-      const validHostPattern = /^(127\.0\.0\.1|0\.0\.0\.0|localhost|\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})$/;
+      // SECURITY: Restrict to localhost variants only — binding to arbitrary IPs is unsafe
+      const validHostPattern = /^(127\.0\.0\.1|0\.0\.0\.0|localhost)$/;
       if (!validHostPattern.test(host)) {
         return { valid: false, error: 'CLAUDE_MEM_WORKER_HOST must be a valid IP address (e.g., 127.0.0.1, 0.0.0.0)' };
       }
@@ -353,6 +354,27 @@ export class SettingsRoutes extends BaseRouteHandler {
         // Invalid URL format
         logger.debug('SETTINGS', 'Invalid URL format', { url: settings.CLAUDE_MEM_OPENROUTER_SITE_URL, error: error instanceof Error ? error.message : String(error) });
         return { valid: false, error: 'CLAUDE_MEM_OPENROUTER_SITE_URL must be a valid URL' };
+      }
+    }
+
+    // Validate CLAUDE_MEM_DATA_DIR (must resolve within homedir to prevent path traversal)
+    if (settings.CLAUDE_MEM_DATA_DIR) {
+      const resolvedDataDir = path.resolve(settings.CLAUDE_MEM_DATA_DIR);
+      const home = homedir();
+      if (!resolvedDataDir.startsWith(home + path.sep) && resolvedDataDir !== home) {
+        return { valid: false, error: 'CLAUDE_MEM_DATA_DIR must be within the user home directory' };
+      }
+    }
+
+    // Validate CLAUDE_CODE_PATH (must be an absolute path to an existing file)
+    if (settings.CLAUDE_CODE_PATH) {
+      const resolvedCodePath = path.resolve(settings.CLAUDE_CODE_PATH);
+      if (!path.isAbsolute(resolvedCodePath)) {
+        return { valid: false, error: 'CLAUDE_CODE_PATH must be an absolute path' };
+      }
+      // Reject path traversal attempts
+      if (settings.CLAUDE_CODE_PATH.includes('..')) {
+        return { valid: false, error: 'CLAUDE_CODE_PATH must not contain path traversal sequences' };
       }
     }
 

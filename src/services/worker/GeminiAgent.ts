@@ -371,7 +371,7 @@ export class GeminiAgent {
       totalChars
     });
 
-    const url = `${GEMINI_API_URL}/${model}:generateContent?key=${apiKey}`;
+    const url = `${GEMINI_API_URL}/${model}:generateContent`;
 
     // Enforce RPM rate limit for free tier (skipped if rate limiting disabled)
     await enforceRateLimitForModel(model, rateLimitingEnabled);
@@ -380,6 +380,7 @@ export class GeminiAgent {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
+        'x-goog-api-key': apiKey,
       },
       body: JSON.stringify({
         contents,

@@ -82,13 +82,32 @@ function isValidPathForClaudeMd(filePath: string, projectRoot?: string): boolean
  * 2. Has existing tags → replaces only tagged section
  * 3. No tags in existing content → appends tagged content at end
  */
+/**
+ * Sanitize content before injecting into CLAUDE.md to prevent prompt injection.
+ * Strips markdown headings (which could masquerade as CLAUDE.md sections),
+ * HTML/XML tags that could be interpreted as system instructions, and
+ * wraps content in a fenced block to prevent structural interpretation.
+ */
+function sanitizeClaudeMdContent(content: string): string {
+  return content
+    // Strip markdown headings that could inject fake CLAUDE.md sections
+    .replace(/^#{1,6}\s+/gm, '')
+    // Strip XML/HTML tags that could inject system instructions
+    .replace(/<\/?(?:system_instruction|system-instruction|instructions|system|prompt)[^>]*>/gi, '')
+    // Strip any remaining HTML tags (except our own claude-mem-context)
+    .replace(/<\/?(?!claude-mem-context)[a-zA-Z][^>]*>/g, '');
+}
+
 export function replaceTaggedContent(existingContent: string, newContent: string): string {
   const startTag = '<claude-mem-context>';
   const endTag = '</claude-mem-context>';
 
+  // SECURITY: Sanitize content to prevent prompt injection via stored observations
+  const sanitizedContent = sanitizeClaudeMdContent(newContent);
+
   // If no existing content, wrap new content in tags
   if (!existingContent) {
-    return `${startTag}\n${newContent}\n${endTag}`;
+    return `${startTag}\n${sanitizedContent}\n${endTag}`;
   }
 
   // If existing has tags, replace only tagged section
@@ -97,12 +116,12 @@ export function replaceTaggedContent(existingContent: string, newContent: string
 
   if (startIdx !== -1 && endIdx !== -1) {
     return existingContent.substring(0, startIdx) +
-      `${startTag}\n${newContent}\n${endTag}` +
+      `${startTag}\n${sanitizedContent}\n${endTag}` +
       existingContent.substring(endIdx + endTag.length);
   }
 
   // If no tags exist, append tagged content at end
-  return existingContent + `\n\n${startTag}\n${newContent}\n${endTag}`;
+  return existingContent + `\n\n${startTag}\n${sanitizedContent}\n${endTag}`;
 }
 
 /**

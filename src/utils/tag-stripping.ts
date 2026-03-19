@@ -42,12 +42,13 @@ function stripTagsInternal(content: string): string {
   // ReDoS protection: limit tag count before regex processing
   const tagCount = countTags(content);
   if (tagCount > MAX_TAG_COUNT) {
-    logger.warn('SYSTEM', 'tag count exceeds limit', undefined, {
+    logger.warn('SYSTEM', 'tag count exceeds limit, returning content unmodified to prevent ReDoS', undefined, {
       tagCount,
       maxAllowed: MAX_TAG_COUNT,
       contentLength: content.length
     });
-    // Still process but log the anomaly
+    // SECURITY: Block regex processing to prevent ReDoS with excessive tags
+    return content;
   }
 
   return content

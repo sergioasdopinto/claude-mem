@@ -30,7 +30,7 @@ export function TerminalPreview({ content, isLoading = false, className = '' }: 
     const convertedHtml = ansiConverter.toHtml(content);
     return DOMPurify.sanitize(convertedHtml, {
       ALLOWED_TAGS: ['span', 'div', 'br'],
-      ALLOWED_ATTR: ['style', 'class'],
+      ALLOWED_ATTR: ['class'],
       ALLOW_DATA_ATTR: false
     });
   }, [content]);

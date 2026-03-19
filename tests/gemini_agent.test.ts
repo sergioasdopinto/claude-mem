@@ -169,7 +169,10 @@ describe('GeminiAgent', () => {
     expect(global.fetch).toHaveBeenCalledTimes(1);
     const url = (global.fetch as any).mock.calls[0][0];
     expect(url).toContain('https://generativelanguage.googleapis.com/v1/models/gemini-2.5-flash-lite:generateContent');
-    expect(url).toContain('key=test-api-key');
+    // API key should be in header, not URL query parameter (security fix)
+    expect(url).not.toContain('key=');
+    const fetchOptions = (global.fetch as any).mock.calls[0][1];
+    expect(fetchOptions.headers['x-goog-api-key']).toBe('test-api-key');
   });
 
   it('should handle multi-turn conversation', async () => {

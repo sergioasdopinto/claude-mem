@@ -160,13 +160,25 @@ function installBun() {
   try {
     if (IS_WINDOWS) {
       console.error('   Installing via PowerShell...');
-      execSync('powershell -c "irm bun.sh/install.ps1 | iex"', {
+      // SECURITY: Download installer to temp file before executing (avoids pipe-to-shell)
+      const bunInstaller = join(homedir(), '.claude-mem', 'bun-install.ps1');
+      execSync(`powershell -c "Invoke-WebRequest -Uri 'https://bun.sh/install.ps1' -OutFile '${bunInstaller}'"`, {
+        stdio: 'inherit',
+        shell: true
+      });
+      execSync(`powershell -ExecutionPolicy Bypass -File "${bunInstaller}"`, {
         stdio: 'inherit',
         shell: true
       });
     } else {
       console.error('   Installing via curl...');
-      execSync('curl -fsSL https://bun.sh/install | bash', {
+      // SECURITY: Download installer to temp file, inspect, then execute (avoids pipe-to-shell)
+      const bunInstaller = join(homedir(), '.claude-mem', 'bun-install.sh');
+      execSync(`curl -fsSL https://bun.sh/install -o "${bunInstaller}"`, {
+        stdio: 'inherit',
+        shell: true
+      });
+      execSync(`bash "${bunInstaller}"`, {
         stdio: 'inherit',
         shell: true
       });
@@ -205,13 +217,25 @@ function installUv() {
   try {
     if (IS_WINDOWS) {
       console.error('   Installing via PowerShell...');
-      execSync('powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"', {
+      // SECURITY: Download installer to temp file before executing (avoids pipe-to-shell)
+      const uvInstaller = join(homedir(), '.claude-mem', 'uv-install.ps1');
+      execSync(`powershell -c "Invoke-WebRequest -Uri 'https://astral.sh/uv/install.ps1' -OutFile '${uvInstaller}'"`, {
+        stdio: 'inherit',
+        shell: true
+      });
+      execSync(`powershell -ExecutionPolicy Bypass -File "${uvInstaller}"`, {
         stdio: 'inherit',
         shell: true
       });
     } else {
       console.error('   Installing via curl...');
-      execSync('curl -LsSf https://astral.sh/uv/install.sh | sh', {
+      // SECURITY: Download installer to temp file before executing (avoids pipe-to-shell)
+      const uvInstaller = join(homedir(), '.claude-mem', 'uv-install.sh');
+      execSync(`curl -LsSf https://astral.sh/uv/install.sh -o "${uvInstaller}"`, {
+        stdio: 'inherit',
+        shell: true
+      });
+      execSync(`sh "${uvInstaller}"`, {
         stdio: 'inherit',
         shell: true
       });

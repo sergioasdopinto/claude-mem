@@ -8,8 +8,32 @@
 import express, { Request, Response, NextFunction, RequestHandler } from 'express';
 import cors from 'cors';
 import path from 'path';
+import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'fs';
+import { randomBytes } from 'crypto';
+import { homedir } from 'os';
 import { getPackageRoot } from '../../../shared/paths.js';
 import { logger } from '../../../utils/logger.js';
+
+// Token file path for local API authentication
+const TOKEN_FILE = path.join(homedir(), '.claude-mem', '.api-token');
+
+/**
+ * Get or create the local API authentication token.
+ * Written to ~/.claude-mem/.api-token on first use; hooks read it to authenticate.
+ */
+export function getOrCreateApiToken(): string {
+  if (existsSync(TOKEN_FILE)) {
+    const token = readFileSync(TOKEN_FILE, 'utf-8').trim();
+    if (token.length >= 32) return token;
+  }
+  const token = randomBytes(32).toString('hex');
+  const dir = path.dirname(TOKEN_FILE);
+  if (!existsSync(dir)) {
+    mkdirSync(dir, { recursive: true });
+  }
+  writeFileSync(TOKEN_FILE, token, { mode: 0o600 });
+  return token;
+}
 
 /**
  * Create all middleware for the worker service
@@ -41,6 +65,37 @@ export function createMiddleware(
     allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
     credentials: false
   }));
+
+  // Token-based authentication for local API security
+  // Health endpoint is exempt to allow unauthenticated health checks
+  const apiToken = getOrCreateApiToken();
+  middlewares.push((req: Request, res: Response, next: NextFunction) => {
+    // Allow health checks without authentication
+    if (req.path === '/health' || req.path.startsWith('/health')) {
+      return next();
+    }
+    // Allow static assets without authentication
+    const staticExtensions = ['.html', '.js', '.css', '.svg', '.png', '.jpg', '.jpeg', '.webp', '.woff', '.woff2', '.ttf', '.eot'];
+    if (staticExtensions.some(ext => req.path.endsWith(ext)) || req.path === '/') {
+      return next();
+    }
+    // Verify Bearer token
+    const authHeader = req.headers.authorization;
+    if (authHeader === `Bearer ${apiToken}`) {
+      return next();
+    }
+    // Also accept X-API-Token header for simpler curl usage
+    const tokenHeader = req.headers['x-api-token'];
+    if (tokenHeader === apiToken) {
+      return next();
+    }
+    logger.warn('SYSTEM', 'Rejected unauthenticated API request', {
+      path: req.path,
+      method: req.method,
+      ip: req.ip
+    });
+    res.status(401).json({ error: 'Unauthorized', message: 'Missing or invalid API token. Read token from ~/.claude-mem/.api-token' });
+  });
 
   // HTTP request/response logging
   middlewares.push((req: Request, res: Response, next: NextFunction) => {
@@ -91,7 +146,7 @@ export function requireLocalhost(req: Request, res: Response, next: NextFunction
     clientIp === 'localhost';
 
   if (!isLocalhost) {
-    logger.warn('SECURITY', 'Admin endpoint access denied - not localhost', {
+    logger.warn('SYSTEM', 'Admin endpoint access denied - not localhost', {
       endpoint: req.path,
       clientIp,
       method: req.method
